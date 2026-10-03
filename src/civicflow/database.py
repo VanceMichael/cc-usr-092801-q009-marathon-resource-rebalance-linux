@@ -124,6 +124,142 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
     last_error TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS jobs_due ON scheduled_jobs(status, run_at, lease_until);
+
+-- 赛事编排：规则版本决定可调整范围，所有时间列均为带时区的规范时刻。
+CREATE TABLE IF NOT EXISTS race_rules (
+    rule_version TEXT PRIMARY KEY,
+    wave_order_json TEXT NOT NULL,
+    max_wave_delta INTEGER NOT NULL,
+    max_zone_delta INTEGER NOT NULL,
+    effective_from TEXT NOT NULL,
+    detail_json TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS race_zones (
+    zone_id TEXT PRIMARY KEY,
+    wave TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    capacity INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    fired_at TEXT
+);
+CREATE INDEX IF NOT EXISTS race_zones_wave ON race_zones(wave, ordinal);
+CREATE TABLE IF NOT EXISTS race_runners (
+    runner_id TEXT PRIMARY KEY,
+    bib TEXT NOT NULL,
+    qualification_json TEXT NOT NULL,
+    original_zone TEXT NOT NULL,
+    zone TEXT NOT NULL,
+    wave TEXT NOT NULL,
+    status TEXT NOT NULL,
+    frozen INTEGER NOT NULL DEFAULT 0,
+    rule_version TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    updated_by TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS race_runners_bib ON race_runners(bib);
+CREATE TABLE IF NOT EXISTS race_runner_history (
+    runner_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    zone TEXT NOT NULL,
+    wave TEXT NOT NULL,
+    status TEXT NOT NULL,
+    frozen INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    rule_version TEXT NOT NULL,
+    plan_id TEXT,
+    valid_from TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    PRIMARY KEY(runner_id, version)
+);
+CREATE INDEX IF NOT EXISTS race_runner_history_time ON race_runner_history(valid_from);
+CREATE TABLE IF NOT EXISTS race_resources (
+    resource_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    scope_value TEXT NOT NULL,
+    capacity INTEGER NOT NULL,
+    detail_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS race_resources_scope ON race_resources(kind, scope_value);
+CREATE TABLE IF NOT EXISTS race_allocations (
+    allocation_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    runner_id TEXT NOT NULL,
+    zone_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL,
+    plan_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS race_alloc_resource ON race_allocations(resource_id, status);
+CREATE INDEX IF NOT EXISTS race_alloc_runner ON race_allocations(runner_id, kind, status);
+CREATE INDEX IF NOT EXISTS race_alloc_active ON race_allocations(runner_id, kind, status);
+CREATE TABLE IF NOT EXISTS race_consumptions (
+    resource_id TEXT NOT NULL,
+    runner_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    occurred_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(resource_id, runner_id)
+);
+CREATE TABLE IF NOT EXISTS race_allocation_journal (
+    journal_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    allocation_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    from_resource_id TEXT,
+    to_resource_id TEXT,
+    from_zone TEXT,
+    to_zone TEXT,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    plan_id TEXT,
+    detail_json NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS race_alloc_journal_time ON race_allocation_journal(at);
+CREATE TABLE IF NOT EXISTS race_plans (
+    plan_id TEXT PRIMARY KEY,
+    rule_versions_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    base_digest TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    proposed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    applied_at TEXT,
+    applied_by TEXT,
+    version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS race_plans_status ON race_plans(status, created_at);
+CREATE TABLE IF NOT EXISTS race_plan_items (
+    plan_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    runner_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    from_zone TEXT NOT NULL,
+    to_zone TEXT,
+    base_version INTEGER NOT NULL,
+    base_zone TEXT NOT NULL,
+    base_frozen INTEGER NOT NULL,
+    base_status TEXT NOT NULL,
+    PRIMARY KEY(plan_id, runner_id)
+);
+CREATE TABLE IF NOT EXISTS race_plan_approvals (
+    plan_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL,
+    decided_by TEXT,
+    decided_at TEXT,
+    comment TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY(plan_id, role)
+);
 """
 
 
