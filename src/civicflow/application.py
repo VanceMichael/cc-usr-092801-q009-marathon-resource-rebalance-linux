@@ -11,6 +11,7 @@ from .idempotency import IdempotencyStore
 from .inbox import Inbox
 from .jobs import JobQueue
 from .ledger import Ledger
+from .marathon import MarathonService
 from .outbox import Outbox
 from .repository import EntityRepository
 from .reservations import ReservationBook
@@ -27,13 +28,15 @@ class CivicFlow:
     ledger: Ledger
     reservations: ReservationBook
     jobs: JobQueue
+    marathon: MarathonService
 
     @classmethod
     def open(cls, path: str | Path, *, fixed_now: str | None = None) -> "CivicFlow":
         database = Database(path); database.initialize(); clock = Clock(fixed_now)
         audit = AuditLog(clock); idempotency = IdempotencyStore(clock)
         repository = EntityRepository(database, clock, audit, idempotency)
-        return cls(database, clock, repository, Inbox(database, clock), Outbox(database, clock), Ledger(database, clock), ReservationBook(database), JobQueue(database, clock))
+        inbox = Inbox(database, clock)
+        return cls(database, clock, repository, inbox, Outbox(database, clock), Ledger(database, clock), ReservationBook(database), JobQueue(database, clock), MarathonService(database, clock, inbox, audit, idempotency))
 
     def verify(self) -> dict:
         with self.database.connect() as connection:

@@ -124,6 +124,101 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
     last_error TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS jobs_due ON scheduled_jobs(status, run_at, lease_until);
+CREATE TABLE IF NOT EXISTS marathon_rules (
+    rule_id TEXT PRIMARY KEY,
+    version_no INTEGER NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS marathon_zones (
+    zone_id TEXT PRIMARY KEY,
+    wave_no INTEGER NOT NULL,
+    fired INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS marathon_resources (
+    zone_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    capacity INTEGER NOT NULL,
+    PRIMARY KEY(zone_id, kind)
+);
+CREATE TABLE IF NOT EXISTS marathon_runners (
+    runner_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    qualification_json TEXT NOT NULL,
+    original_zone TEXT NOT NULL,
+    current_zone TEXT NOT NULL,
+    status TEXT NOT NULL,
+    frozen INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS marathon_runners_zone ON marathon_runners(current_zone, status);
+CREATE TABLE IF NOT EXISTS marathon_allocations (
+    allocation_id TEXT PRIMARY KEY,
+    zone_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    plan_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS marathon_allocations_usage ON marathon_allocations(zone_id, kind, status);
+CREATE INDEX IF NOT EXISTS marathon_allocations_subject ON marathon_allocations(subject_id, status);
+CREATE TABLE IF NOT EXISTS marathon_alloc_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    allocation_id TEXT NOT NULL,
+    zone_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS marathon_alloc_events_asof ON marathon_alloc_events(occurred_at);
+CREATE TABLE IF NOT EXISTS marathon_capacity_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    zone_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    capacity INTEGER NOT NULL,
+    occurred_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS marathon_plans (
+    plan_id TEXT PRIMARY KEY,
+    rule_version INTEGER NOT NULL,
+    env_revision INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    moves_json TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    proposed_by TEXT NOT NULL,
+    medical_confirmed_by TEXT,
+    transport_confirmed_by TEXT,
+    version INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    applied_at TEXT
+);
+CREATE INDEX IF NOT EXISTS marathon_plans_queue ON marathon_plans(state, env_revision, created_at);
+CREATE TABLE IF NOT EXISTS marathon_adjustments (
+    adjustment_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    runner_id TEXT NOT NULL,
+    from_zone TEXT NOT NULL,
+    to_zone TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS marathon_adjustments_asof ON marathon_adjustments(occurred_at);
+CREATE TABLE IF NOT EXISTS marathon_env (
+    id INTEGER PRIMARY KEY CHECK(id=1),
+    revision INTEGER NOT NULL
+);
 """
 
 

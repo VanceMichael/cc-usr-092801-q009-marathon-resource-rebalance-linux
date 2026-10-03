@@ -55,6 +55,12 @@ class PlatformTest(unittest.TestCase):
         with self.assertRaises(ConflictError):
             self.app.inbox.receive(source="port", source_key="case-1", sequence=1, payload={"status": "changed"}, occurred_at=self.app.clock.now())
 
+    def test_inbox_conflict_is_durably_quarantined(self):
+        self.app.inbox.receive(source="port", source_key="case-1", sequence=1, payload={"status": "ok"}, occurred_at=self.app.clock.now())
+        with self.assertRaises(ConflictError):
+            self.app.inbox.receive(source="port", source_key="case-1", sequence=1, payload={"status": "changed"}, occurred_at=self.app.clock.now())
+        self.assertEqual(self.app.verify()["inbox_conflicts"], 1)
+
     def test_reservation_capacity_and_boundary(self):
         one = self.app.reservations.reserve(resource_id="lane:1", subject_id="a", quantity=6, capacity=10, start_at="2026-09-28T09:00:00+08:00", end_at="2026-09-28T10:00:00+08:00", actor="a")
         with self.assertRaises(ConflictError):

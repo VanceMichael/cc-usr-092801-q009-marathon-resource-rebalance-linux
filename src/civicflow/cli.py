@@ -28,6 +28,28 @@ def demo(app: CivicFlow) -> dict:
     return {"case": created, "inbox": accepted, "reservation": reservation, "entries": [debit, credit], "balance": app.ledger.balance("demo", currency="CNY"), "message_id": message, "verification": app.verify()}
 
 
+def marathon_demo(app: CivicFlow) -> dict:
+    marathon = app.marathon
+    operations = AccessContext(actor_id="ops-lead", permissions=frozenset({"propose:marathon", "apply:marathon", "read:marathon"}))
+    medical_lead = AccessContext(actor_id="medical-lead", permissions=frozenset({"confirm:marathon.medical", "read:marathon"}))
+    transport_lead = AccessContext(actor_id="transport-lead", permissions=frozenset({"confirm:marathon.transport", "read:marathon"}))
+    context = AccessContext.system("marathon-admin")
+    for zone_id, wave_no in (("A", 1), ("B", 2), ("C", 3)):
+        marathon.create_zone(context, zone_id, wave_no=wave_no, capacities={"start_slot": 14000, "medical": 200, "supply": 14000, "shuttle": 300}, request_key=f"demo-zone-{zone_id}")
+    rules = marathon.activate_rules(context, {"elite": {"zones": ["A"]}, "standard": {"zones": ["A", "B", "C"]}, "charity": {"zones": ["C"]}}, request_key="demo-rules-1")
+    marathon.register_runner(context, "B0001", name="示例选手一", qualification={"class": "standard", "best": "3:29:58"}, zone_id="A", request_key="demo-runner-1")
+    marathon.register_runner(context, "B0002", name="示例选手二", qualification={"class": "standard", "best": "3:41:10"}, zone_id="A", request_key="demo-runner-2")
+    adjustable = marathon.adjustable_range(context, "B0001")
+    plan = marathon.propose_plan(operations, [{"runner_id": "B0001", "to_zone": "B", "reason": "一号道临时管制"}], reason="道路容量变化，均衡一枪密度", request_key="demo-plan-1")
+    marathon.confirm_plan(medical_lead, plan["plan_id"], role="medical", request_key="demo-confirm-medical")
+    marathon.confirm_plan(transport_lead, plan["plan_id"], role="transport", request_key="demo-confirm-transport")
+    queue = marathon.confirmation_queue(context)
+    applied = marathon.apply_plan(operations, plan["plan_id"])
+    receipt = marathon.ingest_callback(context, source="checkin", source_key="gate-01", sequence=1, payload={"kind": "check_in", "runner_id": "B0002"}, occurred_at=app.clock.now())
+    review = marathon.review_at(context, as_of=app.clock.now())
+    return {"rules": rules, "adjustable": adjustable, "plan": applied, "queue_size": len(queue), "receipt": receipt, "review": review, "verification": app.verify()}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="协同事务平台")
     parser.add_argument("--db", default=os.getenv("CIVICFLOW_DB", "civicflow.sqlite3"))
@@ -36,11 +58,15 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("demo")
     commands.add_parser("verify")
     commands.add_parser("list-cases")
+    commands.add_parser("marathon-demo")
+    commands.add_parser("marathon-queue")
     args = parser.parse_args(argv)
     app = CivicFlow.open(Path(args.db), fixed_now=args.now)
     if args.command == "demo": emit(demo(app))
     elif args.command == "verify": emit(app.verify())
     elif args.command == "list-cases": emit(CaseService(app.repository).list_current(AccessContext.system("cli")))
+    elif args.command == "marathon-demo": emit(marathon_demo(app))
+    elif args.command == "marathon-queue": emit(app.marathon.confirmation_queue(AccessContext.system("cli")))
     return 0
 
 
